@@ -2,108 +2,87 @@ package me.siam.smartclear;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.HashSet;
 import java.util.Set;
 
-public class SmartNaturalItemClear extends JavaPlugin implements Listener {
+public class SmartNaturalItemClear extends JavaPlugin {
 
-    private final Set<Item> protectedItems = new HashSet<>();
-    private FileConfiguration config;
+    private final int intervalSeconds = 120;
+
+    private final Set<EntityType> hostileMobs = Set.of(
+            EntityType.ZOMBIE,
+            EntityType.SKELETON,
+            EntityType.CREEPER,
+            EntityType.SPIDER,
+            EntityType.CAVE_SPIDER,
+            EntityType.ENDERMAN,
+            EntityType.WITCH,
+            EntityType.SLIME,
+            EntityType.DROWNED,
+            EntityType.HUSK,
+            EntityType.STRAY
+    );
 
     @Override
     public void onEnable() {
-        saveDefaultConfig();
-        config = getConfig();
-        Bukkit.getPluginManager().registerEvents(this, this);
-        startClearTask();
+        startTimers();
     }
 
-    @EventHandler
-    public void onPlayerDrop(PlayerDropItemEvent event) {
-        protectedItems.add(event.getItemDrop());
-    }
-
-    @EventHandler
-    public void onPlayerDeath(PlayerDeathEvent event) {
-        Bukkit.getScheduler().runTaskLater(this, () ->
-                event.getEntity().getWorld()
-                        .getEntitiesByClass(Item.class)
-                        .forEach(protectedItems::add), 1L);
-    }
-
-    private void startClearTask() {
-        int interval = config.getInt("clear-interval-seconds") * 20;
+    private void startTimers() {
 
         new BukkitRunnable() {
+
+            int timeLeft = intervalSeconds;
+
             @Override
             public void run() {
 
-                int removed = 0;
+                timeLeft--;
 
-                for (var world : Bukkit.getWorlds()) {
-                    for (Item item : world.getEntitiesByClass(Item.class)) {
-
-                        if (protectedItems.contains(item)) continue;
-                        if (isWhitelisted(item.getItemStack().getType())) continue;
-
-                        item.remove();
-                        removed++;
-                    }
+                if (timeLeft == 60) {
+                    Bukkit.broadcastMessage("§e[Clear] Items & hostile mobs will be cleared in 60 seconds!");
                 }
 
-                protectedItems.clear();
+                if (timeLeft == 30) {
+                    Bukkit.broadcastMessage("§c[Clear] Items & hostile mobs will be cleared in 30 seconds!");
+                }
 
-                Bukkit.broadcastMessage(
-                        config.getString("messages.cleared")
-                                .replace("%amount%", String.valueOf(removed))
-                );
-            }
-        }.runTaskTimer(this, interval, interval);
+                if (timeLeft <= 0) {
 
-        startWarnings();
-    }
+                    int itemCount = 0;
+                    int mobCount = 0;
 
-    private boolean isWhitelisted(Material material) {
-        return config.getStringList("whitelist").contains(material.name());
-    }
+                    for (var world : Bukkit.getWorlds()) {
 
-    private void startWarnings() {
-        int interval = config.getInt("clear-interval-seconds");
+                        for (Entity entity : world.getEntities()) {
 
-        new BukkitRunnable() {
+                            if (entity instanceof Item item) {
+                                if (item.getItemStack().getType() != Material.AIR) {
+                                    item.remove();
+                                    itemCount++;
+                                }
+                            }
 
-            int countdown = interval;
+                            else if (hostileMobs.contains(entity.getType())) {
+                                entity.remove();
+                                mobCount++;
+                            }
+                        }
+                    }
 
-            @Override
-            public void run() {
+                    Bukkit.broadcastMessage("§a[Clear] Removed "
+                            + itemCount + " items and "
+                            + mobCount + " hostile mobs.");
 
-                countdown--;
-
-                if (countdown == 60)
-                    Bukkit.broadcastMessage(config.getString("messages.warn60"));
-
-                if (countdown == 30)
-                    Bukkit.broadcastMessage(config.getString("messages.warn30"));
-
-                if (countdown <= 10 && countdown >= 5)
-                    Bukkit.broadcastMessage(
-                            config.getString("messages.countdown")
-                                    .replace("%time%", String.valueOf(countdown))
-                    );
-
-                if (countdown <= 0)
-                    countdown = interval;
+                    timeLeft = intervalSeconds;
+                }
             }
 
         }.runTaskTimer(this, 20, 20);
     }
-          }
+}
